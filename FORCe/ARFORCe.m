@@ -1,4 +1,4 @@
-function [cleanEEG] = ARFORCe( EEGdata, Fs, chanLocs, useAcc )
+function [cleanEEG, flag] = ARFORCe( EEGdata, Fs, chanLocs, useAcc )
     %
     % FORCe -- changed name for confilct with another toolbox 
     %
@@ -59,7 +59,10 @@ function [cleanEEG] = ARFORCe( EEGdata, Fs, chanLocs, useAcc )
     %
     %
     %**********************************************************************
-       
+    
+    % flag = 1 to confirm successful return of function with clean EEG
+    flag = 1;
+
     % Begin function proper, check the dimmensions of the input data.   
     N = size( EEGdata,1 );
     M = size( EEGdata,2 );
@@ -87,6 +90,7 @@ function [cleanEEG] = ARFORCe( EEGdata, Fs, chanLocs, useAcc )
     % retunr what we have (ie. retunr input without cleaning).
     if length( unique( remCh ) ) == size( EEGdata,1 ),
         disp( 'Error: No usable data in this EEG epoch: aborting!' );
+        flag = 0; % flag = 0 means failure to clean, unusable data
         cleanEEG = EEGdata;
         return;
     end
