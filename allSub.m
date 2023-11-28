@@ -2,8 +2,10 @@ clear;close all;clc;
 
 %% Parametrization (add here any high-level or global params)
 
-% Laplacian (cross) spatial filtering
-lap = load('laplacian16.mat'); lap = lap.lap;
+% Do or not FORCe artifact removal (1: do, 0: dont)
+doclean = 0;
+if(doclean) cleandir = 'clean'; else cleandir = 'raw'; end
+
 
 % EEGLAB style channel locations (needed for FORCe, topoplots)
 load('chanlocs16.mat');chanlocs = chanlocs16;
@@ -13,8 +15,8 @@ addpath(genpath('./biosig/')); % Biosig toolbox for loading GDF files
 addpath(genpath('./FORCe')); % Artifact removal as pre-processing and potentially criterion for data rejection
 
 %% Input/output paths (EDIT THESE FOR YOUR OWN WORKSTATION)
-RawDataPath = 'D:\Data\CNBI_DATA\TOSORT_CNBI\CHUV\From_INBOX\CNBI_2017_AwarenessPPSCHUV_Perdikis\pps\'; 
-SaveOutPath = 'C:\Users\seraf\Data\ppschuv\';
+RawDataPath = 'E:\Data\PPS_CHUV_sorted\'; 
+SaveOutPath = 'C:\Users\sp19284\tmpdata\ppschuv\';
 
 %% Main processing code
 % This scrit is meant to discover data, load them, do trial extraction,
@@ -47,67 +49,52 @@ for subject = 1:length(SubDir)
     SubSes = SubSes(isd);
     
     % Prepare output file directory
-    if(~exist([SaveOutPath '/' Sub],'dir'))
+    if(~exist([SaveOutPath '/' cleandir '/' Sub],'dir'))
         % Create subject's folder
-        mkdir(SaveOutPath,Sub);
-        mkdir([SaveOutPath '/' Sub],'excluded');
+        mkdir([SaveOutPath '/' cleandir],Sub);
+        mkdir([SaveOutPath '/' cleandir '/' Sub],'excluded');
     end
 
     % Process all sessions
     for ses=1:length(SubSes)
         SesName = SubSes(ses).name;
    
-        % Load log file
-        LogFile = dir([RawDataPath '/' Sub '/' SesName '/*.log']);
-        if(~isempty(LogFile))
-            LogFile = LogFile.name;
-            fid = fopen([RawDataPath '/' Sub '/' SesName '/' LogFile]);
+        % Find GDF files in the sessino folder
+        GDFFiles = dir([RawDataPath '/' Sub '/' SesName '/*.gdf']);
             
-            % Find runs in the log file
-            run=0;
-            while(true)
-                % Read log line
-                Line = fgetl(fid);
-                if(Line == -1)
-                    break;
-                end
-                
-                GDFName = Line(1:strfind(Line, 'gdf')+2);
-                GDFPath = [RawDataPath '/' Sub '/' SesName '/' GDFName];
-              
-                if(exist(GDFPath,'file')>0)
-                    ff = dir(GDFPath);
-                    if( (ff.bytes / (1024^2)) < 1.0 ) % Get rid of too small GDFs, probably failed attempts to start the loop or interrupted runs
-                        continue;
-                    end
-                else
+        for run=1:length(GDFFiles)
+
+            GDFName = GDFFiles(run).name;
+            GDFPath = [GDFFiles(run).folder '/' GDFName];
+          
+            if(exist(GDFPath,'file')>0)
+                ff = dir(GDFPath);
+                if( (ff.bytes / (1024^2)) < 5.0 ) % Get rid of too small GDFs, probably failed attempts to start the loop or interrupted runs
                     continue;
                 end
-                
-                if( (exist([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 0) && (exist([SaveOutPath '/' Sub '/'  '/excluded/' GDFName(1:end-4) '.mat'],'file') == 0))
-                    RunOutput = preanalyzePPS(GDFPath, lap, chanlocs);
-                    if(RunOutput.fine == 1)
-                        save([SaveOutPath Sub '/' GDFName(1:end-4) '.mat'],'RunOutput');
-                    else
-                        % Save excluded dummy mat file
-                        save([SaveOutPath Sub '/excluded/' GDFName(1:end-4) '.mat'],'RunOutput');
-                        continue;
-                    end
-                else
-                    if(exist([SaveOutPath Sub '/' GDFName(1:end-4) '.mat'],'file') == 2)
-                        load([SaveOutPath Sub '/' GDFName(1:end-4) '.mat']);
-                    else
-                        % Faulty run saved, skip it
-                        continue;
-                    end
-                end
-                
-                disp(['Subject: ' Sub ' , Session: ' num2str(ses) ' , Run: ' num2str(run)]);
-                run = run+1;                    
+            else
+                continue;
             end
-            fclose(fid);
-        else
-            disp(['WARNING! No log file for session ' Sub ', ' SesName]);
+            
+            if( (exist([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 0) && (exist([SaveOutPath '/' cleandir '/' Sub '/'  '/excluded/' GDFName(1:end-4) '.mat'],'file') == 0))
+                RunOutput = preanalyzePPS(GDFPath, doclean, chanlocs);
+                if(RunOutput.fine == 1)
+                    save([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'RunOutput');
+                else
+                    % Save excluded dummy mat file
+                    save([SaveOutPath '/' cleandir '/' Sub '/excluded/' GDFName(1:end-4) '.mat'],'RunOutput');
+                    continue;
+                end
+            else
+                if(exist([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 2)
+                    load([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat']);
+                else
+                    % Faulty run saved, skip it
+                    continue;
+                end
+            end
+            
+            disp(['Subject: ' Sub ' , Session: ' num2str(ses) ' , Run: ' num2str(run)]);      
         end
     end
 end

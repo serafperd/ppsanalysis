@@ -1,4 +1,23 @@
-function [RunOutput] = preanalyzePPS(GDFPath, lap, chanlocs)
+function [RunOutput] = preanalyzePPS(GDFPath, doclean, chanlocs)
+
+% function [RunOutput] = preanalyzePPS(GDFPath, lap, chanlocs, clean)
+%
+% Inputs:
+% GDFPath: Path to the GDF raw EEG fle to be processed
+% doclean: Flag for cleaning the data with FORCe. Note that FORCe is anyway
+% applied to detect noisy data. The flag controls whether the cleaned or
+% the original versino is maintained and saved for further processing
+% chanlocs: EEGLAB channel locations, needed for FORCe
+%
+% Output(s):
+% RunOutput: struct with data after trial extraction (+ other useful info)
+%
+% Function to produce data ready for further analysis after trial
+% extraction and/or artifact removal. No pre-processing whatsoever is done,
+% which means subsequent analysis should take care to do that. It should be
+% noted that some (few) of the data may have been recorded with0out
+% hbardware filters, so, it is important to apply some pre-processing for
+% that (DC removal or other baselining, highpass/bandpass, etc.)
 
 RunOutput.fine = 1;
 try
@@ -8,7 +27,7 @@ try
     
     %Obtain sampling freq. Note that few sessions have 512 Hz (USBamp)
     %while the vast majority has 500 Hz Nautilus
-    sfreq = header.EVENT.SampleRate;
+    RunOutput.sfreq = header.EVENT.SampleRate;
 
     % Some times (rarely) there are may be NaNs in some channels, set to 0
     data(isnan(data))=0;
@@ -31,46 +50,37 @@ if(length(cue) < 250)
         num2str(length(cue))]);
 end
 
-trials = [pos pos+dur*sfreq];
+trials = [pos pos+dur*RunOutput.sfreq];
 labels = cue;
 
 % Arrange trials in 3D matrix Trials x time x channels
 trialdata = [];
 for tr=1:size(trials, 1)
-    trialdata(tr,:,:) = data(trials(tr,1):trials(tr,2)-1,:);
+    if(trials(tr,2)-1 > size(data,1))
+        % This means the file for some reason ended too soon, we need to
+        % discard this and all forthcoming trials
+        labels = labels(1:tr-1);
+        break;
+    else
+        trialdata(tr,:,:) = data(trials(tr,1):trials(tr,2)-1,:);
+    end
 end
 
 %% Artifact removal /run rejection
-%Clean signal with FORCe
-success = [];
+%Check data for artifacts with FORCe
+trialsuccess = [];
 for tr=1:size(trialdata, 1)
-    for w=1:sfreq:size(trialdata,2)-sfreq+1
-        [tmp, successFlag] = ARFORCe(squeeze(trialdata(tr, w:w+sfreq-1,:))', sfreq, chanlocs, 0);
-        success(end+1) = successFlag;
-        trialdata(tr, w:w+sfreq-1,:) = tmp';
+    for w=1:RunOutput.sfreq:size(trialdata,2)-RunOutput.sfreq+1
+        [tmp, successFlag] = ARFORCe(squeeze(trialdata(tr, w:w+RunOutput.sfreq-1,:))', RunOutput.sfreq, chanlocs, 0);
+        trialsuccess(tr,w) = successFlag;
+        if(doclean) % If doclean True, replace window with cleaned FORCe data
+            trialdata(tr, w:w+RunOutput.sfreq-1,:) = tmp';
+        end
     end
 end
-% Percentage of windows where FORCe failed to clearn, indicator of how
+% Percentage of windows where FORCe failed to clean, indicator of how
 % usable this run is
-RunOutput.noiseprct = 100*(length(success)-sum(success))/length(success); 
-
-%% Pre-processing
-for tr=1:size(trialdata, 1)
-    thistrial = squeeze(trialdata(tr,:,:));
-
-    % Remove overall DC
-    thistrial = thistrial-repmat(mean(thistrial),size(thistrial,1),1);
-    
-    % Laplacian spatial filtering
-    thistrial = laplacianSP(thistrial,lap);
-
-    % TODO: Add some additional detrending and/or bandpass filtering,
-    % especially because some few runs in the beginning where ran without
-    % hardware filters on the amp side.
-
-    % Return filtered trial to trialdata matrix
-    trialdata(tr,:,:) = thistrial;
-end
-
+RunOutput.trialsuccess = trialsuccess;
+RunOutput.noiseprct = 100*(length(trialsuccess(:))-sum(trialsuccess(:)))/length(trialsuccess(:)); 
 RunOutput.data = trialdata;
 RunOutput.labels = labels;
