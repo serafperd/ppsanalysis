@@ -2,11 +2,6 @@ clear;close all;clc;
 
 %% Parametrization (add here any high-level or global params)
 
-% Do or not FORCe artifact removal (1: do, 0: dont)
-doclean = 0;
-if(doclean) cleandir = 'clean'; else cleandir = 'raw'; end
-
-
 % EEGLAB style channel locations (needed for FORCe, topoplots)
 load('chanlocs16.mat');chanlocs = chanlocs16;
 
@@ -15,8 +10,11 @@ addpath(genpath('./biosig/')); % Biosig toolbox for loading GDF files
 addpath(genpath('./FORCe')); % Artifact removal as pre-processing and potentially criterion for data rejection
 
 %% Input/output paths (EDIT THESE FOR YOUR OWN WORKSTATION)
-RawDataPath = 'E:\Data\PPS_CHUV_sorted\'; 
-SaveOutPath = 'C:\Users\sp19284\tmpdata\ppschuv\';
+% RawDataPath = 'E:\Data\PPS_CHUV_sorted\'; 
+% SaveOutPath = 'C:\Users\sp19284\tmpdata\ppschuv\';
+RawDataPath = 'Z:\tommaso_transfer\'; 
+SaveOutPath = 'Z:\Processed\';
+
 
 %% Main processing code
 % This scrit is meant to discover data, load them, do trial extraction,
@@ -32,35 +30,38 @@ SaveOutPath = 'C:\Users\sp19284\tmpdata\ppschuv\';
 
 % Find subjects in RawDataPath. Convention is there is one folder per
 % subject, no folders that are NOT subjects (should) exist
-SubDir = dir(RawDataPath);
-SubDir = SubDir(3:end); % Get rid of directories './', '../'
-isd = [SubDir(:).isdir]; % Filter out any files in the same directory
-SubDir = SubDir(isd);
+SubSesDir = dir(RawDataPath);
+SubSesDir = SubSesDir(3:end); % Get rid of directories './', '../'
+isd = [SubSesDir(:).isdir]; % Filter out any files in the same directory
+SubSesDir = SubSesDir(isd);
 
-for subject = 1:length(SubDir)
+SubInSes = regexprep({SubSesDir.name},'[\d"]',''); % Index of which subject is in each session folder
+SubID = unique(SubInSes);
+
+for subject = 1:length(SubID)
     
-    % Find session folders in each subject folder. Again, the convention is
-    % that each subject folder will contain one or more session folders
-    % whose name is the date of recording as YYYMMDD
-    Sub = SubDir(subject).name;
-    SubSes = dir([RawDataPath '/' Sub]);
-    SubSes = SubSes(3:end);
-    isd = [SubSes(:).isdir];
-    SubSes = SubSes(isd);
+    % The script has been changed for Tommaso's big database where each
+    % session X is in its own folder as SubidX. For previous versions of
+    % this script working with ny own ordering (sessions are folders within
+    % each subject's folder) revert the git to the appropriate tag
+    
+    Sub = SubID{subject};
+    SessionFolderIndex = [];
+    SessionFolderIndex = find(contains(SubInSes,Sub));
     
     % Prepare output file directory
-    if(~exist([SaveOutPath '/' cleandir '/' Sub],'dir'))
+    if(~exist([SaveOutPath '/' Sub],'dir'))
         % Create subject's folder
-        mkdir([SaveOutPath '/' cleandir],Sub);
-        mkdir([SaveOutPath '/' cleandir '/' Sub],'excluded');
+        mkdir([SaveOutPath],Sub);
+        mkdir([SaveOutPath '/' Sub],'excluded');
     end
 
     % Process all sessions
-    for ses=1:length(SubSes)
-        SesName = SubSes(ses).name;
+    for ses=1:length(SessionFolderIndex)
+        SesName = SubSesDir(SessionFolderIndex(ses)).name;
    
-        % Find GDF files in the sessino folder
-        GDFFiles = dir([RawDataPath '/' Sub '/' SesName '/*.gdf']);
+        % Find GDF files in the session folder
+        GDFFiles = dir([RawDataPath '/' SesName '/*.gdf']);
             
         for run=1:length(GDFFiles)
 
@@ -76,18 +77,18 @@ for subject = 1:length(SubDir)
                 continue;
             end
             
-            if( (exist([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 0) && (exist([SaveOutPath '/' cleandir '/' Sub '/'  '/excluded/' GDFName(1:end-4) '.mat'],'file') == 0))
-                RunOutput = preanalyzePPS(GDFPath, doclean, chanlocs);
+            if( (exist([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 0) && (exist([SaveOutPath '/' Sub '/'  '/excluded/' GDFName(1:end-4) '.mat'],'file') == 0))
+                RunOutput = preanalyzePPS(GDFPath, chanlocs);
                 if(RunOutput.fine == 1)
-                    save([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'RunOutput');
+                    save([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'RunOutput');
                 else
                     % Save excluded dummy mat file
-                    save([SaveOutPath '/' cleandir '/' Sub '/excluded/' GDFName(1:end-4) '.mat'],'RunOutput');
+                    save([SaveOutPath '/' Sub '/excluded/' GDFName(1:end-4) '.mat'],'RunOutput');
                     continue;
                 end
             else
-                if(exist([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 2)
-                    load([SaveOutPath '/' cleandir '/' Sub '/' GDFName(1:end-4) '.mat']);
+                if(exist([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 2)
+                    load([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat']);
                 else
                     % Faulty run saved, skip it
                     continue;

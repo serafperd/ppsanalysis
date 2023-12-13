@@ -1,13 +1,9 @@
-function [RunOutput] = preanalyzePPS(GDFPath, doclean, chanlocs)
+function [RunOutput] = preanalyzePPS(GDFPath, chanlocs)
 
 % function [RunOutput] = preanalyzePPS(GDFPath, lap, chanlocs, clean)
 %
 % Inputs:
 % GDFPath: Path to the GDF raw EEG fle to be processed
-% doclean: Flag for cleaning the data with FORCe. Note that FORCe is anyway
-% applied to detect noisy data. The flag controls whether the cleaned or
-% the original versino is maintained and saved for further processing
-% chanlocs: EEGLAB channel locations, needed for FORCe
 %
 % Output(s):
 % RunOutput: struct with data after trial extraction (+ other useful info)
@@ -25,8 +21,8 @@ try
     
     data = data(:,1:16); % Remove unused HW trigger channel
     
-    %Obtain sampling freq. Note that few sessions have 512 Hz (USBamp)
-    %while the vast majority has 500 Hz Nautilus
+    % Obtain sampling freq. Note that few sessions have 512 Hz (USBamp)
+    % whilst the vast majority has 500 Hz Nautilus
     RunOutput.sfreq = header.EVENT.SampleRate;
 
     % Some times (rarely) there are may be NaNs in some channels, set to 0
@@ -66,6 +62,10 @@ for tr=1:size(trials, 1)
     end
 end
 
+% Initialize cleaned version of trialdata
+cleantrialdata = trialdata;
+
+
 %% Artifact removal /run rejection
 %Check data for artifacts with FORCe
 trialsuccess = [];
@@ -73,14 +73,20 @@ for tr=1:size(trialdata, 1)
     for w=1:RunOutput.sfreq:size(trialdata,2)-RunOutput.sfreq+1
         [tmp, successFlag] = ARFORCe(squeeze(trialdata(tr, w:w+RunOutput.sfreq-1,:))', RunOutput.sfreq, chanlocs, 0);
         trialsuccess(tr,w) = successFlag;
-        if(doclean) % If doclean True, replace window with cleaned FORCe data
-            trialdata(tr, w:w+RunOutput.sfreq-1,:) = tmp';
-        end
+        cleantrialdata(tr, w:w+RunOutput.sfreq-1,:) = tmp';
     end
 end
 % Percentage of windows where FORCe failed to clean, indicator of how
 % usable this run is
 RunOutput.trialsuccess = trialsuccess;
 RunOutput.noiseprct = 100*(length(trialsuccess(:))-sum(trialsuccess(:)))/length(trialsuccess(:)); 
-RunOutput.data = trialdata;
+RunOutput.data.raw = trialdata;
+RunOutput.data.clean = cleantrialdata;
 RunOutput.labels = labels;
+
+% Store also meta-data
+SlashInd = union(strfind(GDFPath, '\'), strfind(GDFPath, '/'));
+DotInd = strfind(GDFPath,'.');
+RunOutput.subid = GDFPath(SlashInd(end)+1:DotInd(1)-1);
+RunOutput.session = GDFPath(DotInd(1)+1:DotInd(2)-1);
+RunOutput.time = GDFPath(DotInd(2)+1:DotInd(3)-1); 
