@@ -1,19 +1,20 @@
-clear;close all;clc;
+clear;
+close all;
+clc;
 
 %% Parametrization (add here any high-level or global params)
 
 % EEGLAB style channel locations (needed for FORCe, topoplots)
-load('chanlocs16.mat');chanlocs = chanlocs16;
+load('C:\Users\Muhammad Nawaz\Box\myBox\Semis colloboration\git_code\chanlocs16.mat');
+chanlocs = chanlocs16;
 
 %% Libraries to include
-addpath(genpath('./biosig/')); % Biosig toolbox for loading GDF files
-addpath(genpath('./FORCe')); % Artifact removal as pre-processing and potentially criterion for data rejection
+addpath(genpath('C:\Users\Muhammad Nawaz\Box\myBox\Semis colloboration\git_code\biosig\')); % Biosig toolbox for loading GDF files
+addpath(genpath('C:\Users\Muhammad Nawaz\Box\myBox\Semis colloboration\git_code\FORCe\')); % Artifact removal as pre-processing and potentially criterion for data rejection
 
 %% Input/output paths (EDIT THESE FOR YOUR OWN WORKSTATION)
-% RawDataPath = 'E:\Data\PPS_CHUV_sorted\'; 
-% SaveOutPath = 'C:\Users\sp19284\tmpdata\ppschuv\';
-RawDataPath = 'Z:\tommaso_transfer\'; 
-SaveOutPath = 'Z:\Processed\';
+RawDataPath = 'C:\Users\Muhammad Nawaz\Box\myBox\Semis colloboration\PPS data\raw\tommaso_transfer\'; 
+SaveOutPath = 'C:\Users\Muhammad Nawaz\Box\myBox\Semis colloboration\PPS data\Processed\';
 
 
 %% Main processing code
@@ -61,12 +62,12 @@ for subject = 1:length(SubID)
         SesName = SubSesDir(SessionFolderIndex(ses)).name;
    
         % Find GDF files in the session folder
-        GDFFiles = dir([RawDataPath '/' SesName '/*.gdf']);
+        GDFFiles = dir([RawDataPath '\' SesName '\*.gdf']);
             
         for run=1:length(GDFFiles)
 
             GDFName = GDFFiles(run).name;
-            GDFPath = [GDFFiles(run).folder '/' GDFName];
+            GDFPath = [GDFFiles(run).folder '\' GDFName];
           
             if(exist(GDFPath,'file')>0)
                 ff = dir(GDFPath);
@@ -78,7 +79,8 @@ for subject = 1:length(SubID)
             end
             
             if( (exist([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'file') == 0) && (exist([SaveOutPath '/' Sub '/'  '/excluded/' GDFName(1:end-4) '.mat'],'file') == 0))
-                RunOutput = preanalyzePPS(GDFPath, chanlocs);
+                RunOutput = preanalyzePPS_rab(GDFPath, chanlocs, 0, 'filter', 1, 'low_cutoff', 1, 'high_cutoff', 20, 'filter_order', 4); %if want filter
+                % RunOutput = preanalyzePPS(GDFPath, chanlocs); %if want no filter
                 if(RunOutput.fine == 1)
                     save([SaveOutPath '/' Sub '/' GDFName(1:end-4) '.mat'],'RunOutput');
                 else

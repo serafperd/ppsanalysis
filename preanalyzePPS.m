@@ -1,4 +1,4 @@
-function [RunOutput] = preanalyzePPS(GDFPath, chanlocs)
+function [RunOutput] = preanalyzePPS(GDFPath, chanlocs, doFORCe, varargin)
 
 % function [RunOutput] = preanalyzePPS(GDFPath, lap, chanlocs, clean)
 %
@@ -14,6 +14,28 @@ function [RunOutput] = preanalyzePPS(GDFPath, chanlocs)
 % noted that some (few) of the data may have been recorded with0out
 % hbardware filters, so, it is important to apply some pre-processing for
 % that (DC removal or other baselining, highpass/bandpass, etc.)
+
+% Default values
+filter       = 0; % By default, do not filter
+low_cutoff   = 1; % Default low cutoff frequency
+high_cutoff  = 40; % Default high cutoff frequency
+filter_order = 4; % Default filter order
+    
+% Parse variable inputs
+for i = 1:2:length(varargin)
+    switch lower(varargin{i})
+        case 'filter'
+            filter = varargin{i+1};
+        case 'low_cutoff'
+            low_cutoff = varargin{i+1};
+        case 'high_cutoff'
+            high_cutoff = varargin{i+1};
+        case 'filter_order'
+            filter_order = varargin{i+1};
+        otherwise
+            error('Unknown input parameter');
+    end
+end
 
 RunOutput.fine = 1;
 try
@@ -33,8 +55,30 @@ catch
     RunOutput.fine = 0;
     return;
 end
+%% Check if filter should be applied
+if filter == 1
+    % Design Butterworth filter
+    [b, a] = butter(filter_order, [low_cutoff, high_cutoff] / (RunOutput.sfreq/2), 'bandpass');
+    
+    % Initialize filtered data matrix
+    filteredData = zeros(size(data));
+    
+    % Apply filter to each channel
+    for channel = 1:size(data, 2)
+        filteredData(:, channel) = filtfilt(b, a, data(:, channel));
+    end
+    
+elseif filter == 0
+    % Do not filter the data
+    filteredData = data;
+else
+    error('Filter input must be 0 or 1');
+end
+
+data = filteredData;
 
 %% Trial extraction
+preStim = 1.0; % Each stimulus include 1 sec pre-stimulus samples
 dur = 2.0; % All trials have 2 second duration
 cue = header.EVENT.TYP;
 pos = header.EVENT.POS;
@@ -46,7 +90,8 @@ if(length(cue) < 250)
         num2str(length(cue))]);
 end
 
-trials = [pos pos+dur*RunOutput.sfreq];
+% trials = [pos pos+dur*RunOutput.sfreq];     <------------------- this line is commented by rab
+trials = [pos-preStim*RunOutput.sfreq pos+dur*RunOutput.sfreq];
 labels = cue;
 
 % Arrange trials in 3D matrix Trials x time x channels
@@ -62,26 +107,27 @@ for tr=1:size(trials, 1)
     end
 end
 
-% Initialize cleaned version of trialdata
-cleantrialdata = trialdata;
-
-
 %% Artifact removal /run rejection
 %Check data for artifacts with FORCe
-trialsuccess = [];
-for tr=1:size(trialdata, 1)
-    for w=1:RunOutput.sfreq:size(trialdata,2)-RunOutput.sfreq+1
-        [tmp, successFlag] = ARFORCe(squeeze(trialdata(tr, w:w+RunOutput.sfreq-1,:))', RunOutput.sfreq, chanlocs, 0);
-        trialsuccess(tr,w) = successFlag;
-        cleantrialdata(tr, w:w+RunOutput.sfreq-1,:) = tmp';
+if doFORCe
+    %Initialize cleaned version of trialdata
+    cleantrialdata = trialdata;
+    
+    trialsuccess = [];
+    for tr=1:size(trialdata, 1)
+        for w=1:RunOutput.sfreq:size(trialdata,2)-RunOutput.sfreq+1
+            [tmp, successFlag] = ARFORCe(squeeze(trialdata(tr, w:w+RunOutput.sfreq-1,:))', RunOutput.sfreq, chanlocs, 0);
+            trialsuccess(tr,w) = successFlag;
+            cleantrialdata(tr, w:w+RunOutput.sfreq-1,:) = tmp';
+        end
     end
+    % Percentage of windows where FORCe failed to clean, indicator of how
+    % usable this run is
+    RunOutput.trialsuccess = trialsuccess;
+    RunOutput.noiseprct = 100*(length(trialsuccess(:))-sum(trialsuccess(:)))/length(trialsuccess(:)); 
+    RunOutput.data.clean = cleantrialdata;
 end
-% Percentage of windows where FORCe failed to clean, indicator of how
-% usable this run is
-RunOutput.trialsuccess = trialsuccess;
-RunOutput.noiseprct = 100*(length(trialsuccess(:))-sum(trialsuccess(:)))/length(trialsuccess(:)); 
 RunOutput.data.raw = trialdata;
-RunOutput.data.clean = cleantrialdata;
 RunOutput.labels = labels;
 
 % Store also meta-data
